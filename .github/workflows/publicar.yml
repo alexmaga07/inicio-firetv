@@ -21,7 +21,7 @@ concurrency: publicar
 
 jobs:
   publicar:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       VERSION: ${{ inputs.version }}
       NOTAS: ${{ inputs.notas }}
@@ -29,9 +29,9 @@ jobs:
       # repositorio público (variable RELEASES_REPO + secreto RELEASES_TOKEN); si no, en este.
       REPO_PUB: ${{ vars.RELEASES_REPO || github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
