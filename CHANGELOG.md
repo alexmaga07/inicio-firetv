@@ -1,5 +1,9 @@
 # Historial de versiones
 
+## 2.7.0 — 2026-11-03
+
+Actualizaciones automáticas de Inicio
+
 ## 2.6.3 — 2026-11-03
 
 - Stremio ya no se cierra al volver de una pausa larga: al despertar el Fire Stick, Inicio solo se abre si lo que hay delante es el inicio de Amazon (antes se abría siempre y sacaba de la película).
