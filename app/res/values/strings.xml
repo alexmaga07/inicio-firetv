@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Inicio</string>
+    <string name="guard_name">Inicio: botón Home</string>
+    <string name="guard_desc">Abre tu pantalla de Inicio cuando aparece el inicio de Amazon.</string>
+</resources>

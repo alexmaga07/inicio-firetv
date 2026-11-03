@@ -1,0 +1,14 @@
+# Clave de firma: NUNCA al repositorio (va como secreto de GitHub: KEYSTORE_B64)
+*.keystore
+*.jks
+*.b64*
+*.pass
+
+# Compilados
+*.apk
+*.idsig
+build/
+
+# Kit: los APK pesan demasiado para git (AceStream > 100 MB) y el registro tiene datos de los aparatos
+kit/apks/*.apk
+kit/registro/

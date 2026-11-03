@@ -1,0 +1,25 @@
+# Comprueba que Inicio compila con cada cambio subido (sin publicar nada).
+# Firma con una clave de usar y tirar: el APK no sirve para instalar encima del bueno.
+name: Comprobar que compila
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: SDK de Android (android-28 + build-tools 34)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-28" "build-tools;34.0.0" > /dev/null
+      - name: Compilar
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/prueba.keystore" -storepass prueba1 -keypass prueba1 \
+            -alias prueba -keyalg RSA -keysize 2048 -validity 1 -dname "CN=prueba" > /dev/null 2>&1
+          SDK="$ANDROID_HOME" KS="$RUNNER_TEMP/prueba.keystore" KS_PASS=prueba1 bash scripts/compilar.sh "$RUNNER_TEMP/inicio.apk"

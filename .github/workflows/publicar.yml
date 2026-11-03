@@ -1,0 +1,99 @@
+# Publica una versión nueva de Inicio. Se lanza a mano desde GitHub:
+#   Actions > «Publicar versión» > Run workflow > versión + qué cambia.
+# Sube el número de versión, compila, firma con la clave de los secretos, guarda el cambio con su
+# etiqueta (vX.Y.Z) y publica el APK y update.json. Los Fire Stick lo ven solos (Updater.java).
+name: Publicar versión
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versión nueva (p. ej. 2.7.1)"
+        required: true
+      notas:
+        description: "Qué cambia (se enseña en la tele al ofrecer la actualización)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency: publicar
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      NOTAS: ${{ inputs.notas }}
+      # Dónde se publican las versiones. Si el código es privado, se puede publicar en otro
+      # repositorio público (variable RELEASES_REPO + secreto RELEASES_TOKEN); si no, en este.
+      REPO_PUB: ${{ vars.RELEASES_REPO || github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: SDK de Android (android-28 + build-tools 34)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-28" "build-tools;34.0.0" > /dev/null
+
+      - name: Subir el número de versión
+        run: |
+          set -e
+          M=app/AndroidManifest.xml
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "Versión no válida: $VERSION"; exit 1; }
+          if git ls-remote --tags origin "v$VERSION" | grep -q .; then echo "La versión v$VERSION ya existe"; exit 1; fi
+          CODE=$(( $(grep -o 'versionCode="[0-9]*"' $M | grep -o '[0-9]*') + 1 ))
+          sed -i "s/versionCode=\"[0-9]*\"/versionCode=\"$CODE\"/; s/versionName=\"[^\"]*\"/versionName=\"$VERSION\"/" $M
+          # Que las versiones publicadas busquen sus actualizaciones en el sitio correcto
+          sed -i "s#https://github.com/[^\"]*/releases/latest/download/update.json#https://github.com/$REPO_PUB/releases/latest/download/update.json#" \
+            app/src/tv/inicio/launcher/Updater.java
+          python3 - <<'EOF'
+          import os, datetime
+          v, n = os.environ["VERSION"], os.environ["NOTAS"]
+          p = "CHANGELOG.md"
+          old = open(p, encoding="utf-8").read()
+          head, _, rest = old.partition("\n")
+          entry = f"\n## {v} — {datetime.date.today().isoformat()}\n\n{n}\n"
+          open(p, "w", encoding="utf-8").write(head + "\n" + entry + rest)
+          EOF
+          echo "versionCode $CODE · versionName $VERSION"
+
+      - name: Compilar y firmar
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASS }}
+        run: |
+          set -e
+          [ -n "$KS_B64" ] || { echo "Falta el secreto KEYSTORE_B64 (ver README)"; exit 1; }
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/inicio.keystore"
+          SDK="$ANDROID_HOME" KS="$RUNNER_TEMP/inicio.keystore" bash scripts/compilar.sh "$RUNNER_TEMP/inicio-$VERSION.apk"
+          rm -f "$RUNNER_TEMP/inicio.keystore"
+
+      - name: Guardar la versión (commit + etiqueta)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Inicio $VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD "v$VERSION"
+
+      - name: Publicar APK y update.json
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+        run: |
+          set -e
+          APK="$RUNNER_TEMP/inicio-$VERSION.apk"
+          CODE=$(grep -o 'versionCode="[0-9]*"' app/AndroidManifest.xml | grep -o '[0-9]*')
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          URL="https://github.com/$REPO_PUB/releases/download/v$VERSION/inicio-$VERSION.apk"
+          CODE="$CODE" SHA="$SHA" URL="$URL" python3 -c '
+          import json, os
+          json.dump({"versionCode": int(os.environ["CODE"]), "versionName": os.environ["VERSION"],
+                     "apk": os.environ["URL"], "sha256": os.environ["SHA"], "notas": os.environ["NOTAS"]},
+                    open("update.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)'
+          cat update.json
+          gh release create "v$VERSION" "$APK" update.json --repo "$REPO_PUB" \
+            --title "Inicio $VERSION" --notes "$NOTAS" --latest
