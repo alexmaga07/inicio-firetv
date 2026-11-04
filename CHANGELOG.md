@@ -1,5 +1,9 @@
 # Historial de versiones
 
+## 2.7.1 — 2026-11-04
+
+Prueba de actualización a distancia
+
 ## 2.7.0 — 2026-11-03
 
 Actualizaciones automáticas de Inicio
