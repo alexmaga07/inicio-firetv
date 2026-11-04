@@ -995,11 +995,11 @@ public class MainActivity extends Activity {
         Updater.Info up = Updater.last;
         boolean upd = up != null && up.newer;
         String label = "●  " + (on ? "VPN activa" : "VPN desactivada") + (block ? "  ·  ⛔ Bloqueos activos" : "")
-                + (upd ? "  ·  ⬆ Inicio " + up.versionName : "");
+                + (upd ? "  ·  ↑ Inicio " + up.versionName : "");
         SpannableString sp = new SpannableString(label);
         sp.setSpan(new ForegroundColorSpan(on || block ? ACCENT : 0xFF9A8A90), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         if (block) sp.setSpan(new ForegroundColorSpan(ACCENT), label.indexOf("⛔"), label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        if (upd) sp.setSpan(new ForegroundColorSpan(ACCENT), label.indexOf("⬆"), label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if (upd) sp.setSpan(new ForegroundColorSpan(ACCENT), label.indexOf("↑"), label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         vpn.setText(sp);
         // Comprobar si hay bloqueos cada 10 min mientras Inicio está a la vista (solo sin VPN:
         // con la VPN puesta no se ve lo que bloquea la operadora, ni hace falta)
@@ -1112,6 +1112,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         resumed = true;
+        BootReceiver.ensureAccessibility(this);
         Redirector.lastPkg = getPackageName();
         Redirector.lastCls = MainActivity.class.getName();
         // Si se viene de AceStream, cerrar su reproductor por si sigue en segundo plano o en PiP

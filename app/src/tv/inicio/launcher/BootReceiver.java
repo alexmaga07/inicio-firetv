@@ -24,11 +24,36 @@ public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context c, Intent i) {
         String a = i.getAction();
+        ensureAccessibility(c);
         try { LogWatchService.ensure(c); } catch (Throwable ignored) { }
         if (!CHECK.equals(a)) {
             if (SystemClock.elapsedRealtime() < BOOT_WINDOW) scheduleChecks(c);
         }
         checkNow(c);
+    }
+
+    /**
+     * Fire OS 7+: el botón Home funciona con el servicio de accesibilidad GuardService. Al
+     * actualizar Inicio con el instalador de Android (actualización a distancia), Fire OS lo
+     * desactiva. Si Inicio tiene WRITE_SECURE_SETTINGS (se concede una vez por ADB al preparar
+     * el aparato), lo vuelve a activar él mismo. En Fire OS 6 no aplica (usa LogWatchService).
+     */
+    static void ensureAccessibility(Context c) {
+        if (android.os.Build.VERSION.SDK_INT < 26) return;
+        if (c.checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS")
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        try {
+            android.content.ContentResolver r = c.getContentResolver();
+            String comp = c.getPackageName() + "/" + GuardService.class.getName();
+            String cur = android.provider.Settings.Secure.getString(r, "enabled_accessibility_services");
+            if (cur == null || !cur.contains(comp)) {
+                String v = cur == null || cur.isEmpty() ? comp : cur + ":" + comp;
+                android.provider.Settings.Secure.putString(r, "enabled_accessibility_services", v);
+            }
+            if (!"1".equals(android.provider.Settings.Secure.getString(r, "accessibility_enabled"))) {
+                android.provider.Settings.Secure.putString(r, "accessibility_enabled", "1");
+            }
+        } catch (Throwable ignored) { }
     }
 
     static void scheduleChecks(Context c) {

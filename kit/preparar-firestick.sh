@@ -139,6 +139,8 @@ if [ "${SDK:-0}" -ge 26 ]; then
   sh_ settings put secure enabled_accessibility_services tv.inicio.launcher/tv.inicio.launcher.GuardService
   sh_ settings put secure accessibility_enabled 1
   sh_ appops set tv.inicio.launcher REQUEST_INSTALL_PACKAGES allow
+  # Para que Inicio reactive su botón Home tras actualizarse a distancia (Fire OS lo apaga)
+  sh_ pm grant tv.inicio.launcher android.permission.WRITE_SECURE_SETTINGS
   # AceStream: sin ventanita (PiP) al salir del reproductor
   sh_ appops set org.acestream.node.web PICTURE_IN_PICTURE deny
   verde "Botón Home por accesibilidad · actualizaciones permitidas · AceStream sin PiP"
