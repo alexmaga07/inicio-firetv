@@ -40,9 +40,7 @@ for IP in "${IPS[@]}"; do
   echo -n "$D: "; "$ADB" -s "$D" install -r "$APK" | tail -1
   SDKV="$("$ADB" -s "$D" shell getprop ro.build.version.sdk | tr -d '\r')"
   "$ADB" -s "$D" shell "settings put global alarm_manager_constants min_futurity=0; dumpsys deviceidle whitelist +tv.inicio.launcher >/dev/null"
-  if [ "${SDKV:-0}" -ge 26 ]; then
-    "$ADB" -s "$D" shell "pm grant tv.inicio.launcher android.permission.WRITE_SECURE_SETTINGS"
-  fi
+  "$ADB" -s "$D" shell "pm grant tv.inicio.launcher android.permission.WRITE_SECURE_SETTINGS"
   if [ "${SDKV:-0}" -lt 26 ]; then
     # Fire OS 6: botón Home por registro del sistema
     "$ADB" -s "$D" shell "pm grant tv.inicio.launcher android.permission.READ_LOGS; appops set tv.inicio.launcher SYSTEM_ALERT_WINDOW allow"

@@ -95,5 +95,8 @@ jobs:
                      "apk": os.environ["URL"], "sha256": os.environ["SHA"], "notas": os.environ["NOTAS"]},
                     open("update.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)'
           cat update.json
-          gh release create "v$VERSION" "$APK" update.json --repo "$REPO_PUB" \
+          # Copia con nombre fijo: https://github.com/<repo>/releases/latest/download/inicio.apk
+          # siempre apunta a la última versión (reinstalar sin ADB, p. ej. con la app Downloader)
+          cp "$APK" "$RUNNER_TEMP/inicio.apk"
+          gh release create "v$VERSION" "$APK" "$RUNNER_TEMP/inicio.apk" update.json --repo "$REPO_PUB" \
             --title "Inicio $VERSION" --notes "$NOTAS" --latest

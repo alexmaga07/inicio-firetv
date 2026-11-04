@@ -133,14 +133,15 @@ done
 # ------------------------------------------------------------------ 6. Configurar Inicio
 titulo "Configurando Inicio"
 sh_ settings put global alarm_manager_constants min_futurity=0
+# Permiso para que Inicio pueda arreglarse a sí mismo tras actualizarse a distancia (reactivar el
+# botón Home, cambiar ajustes del sistema en versiones futuras) sin necesitar ADB nunca más
+sh_ pm grant tv.inicio.launcher android.permission.WRITE_SECURE_SETTINGS
 sh_ dumpsys deviceidle whitelist +tv.inicio.launcher >/dev/null
 if [ "${SDK:-0}" -ge 26 ]; then
   # Fire OS 7+: botón Home por accesibilidad; permiso para instalar sus propias actualizaciones
   sh_ settings put secure enabled_accessibility_services tv.inicio.launcher/tv.inicio.launcher.GuardService
   sh_ settings put secure accessibility_enabled 1
   sh_ appops set tv.inicio.launcher REQUEST_INSTALL_PACKAGES allow
-  # Para que Inicio reactive su botón Home tras actualizarse a distancia (Fire OS lo apaga)
-  sh_ pm grant tv.inicio.launcher android.permission.WRITE_SECURE_SETTINGS
   # AceStream: sin ventanita (PiP) al salir del reproductor
   sh_ appops set org.acestream.node.web PICTURE_IN_PICTURE deny
   verde "Botón Home por accesibilidad · actualizaciones permitidas · AceStream sin PiP"

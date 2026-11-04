@@ -21,6 +21,10 @@ detector de bloqueos y actualizaciones a distancia.
 4. Cada Fire Stick lo detecta solo (al abrir Inicio, como mucho cada 6 h): sale el aviso
    «Nueva versión de Inicio», se pulsa **Actualizar ahora** y luego **Instalar**.
 
+Si un Fire Stick se queda sin poder actualizarse (p. ej. Inicio no arranca), se reinstala sin ADB
+desde la app **Downloader** (ya instalada por el kit) con la dirección fija de la última versión:
+`https://github.com/alexmaga07/inicio-firetv/releases/latest/download/inicio.apk`
+
 Para volver atrás: publica una versión nueva con el código anterior (Android no deja instalar una
 versión con número menor encima de una mayor).
 
