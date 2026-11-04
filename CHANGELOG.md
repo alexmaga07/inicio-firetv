@@ -1,5 +1,9 @@
 # Historial de versiones
 
+## 2.7.2 — 2026-11-04
+
+Botón Home se mantiene tras actualizar
+
 ## 2.7.1 — 2026-11-04
 
 Prueba de actualización a distancia
