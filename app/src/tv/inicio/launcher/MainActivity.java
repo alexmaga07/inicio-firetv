@@ -76,10 +76,40 @@ public class MainActivity extends Activity {
         {"org.jdownloader", "JDownloader", "Gestor de descargas"},
         {"#ace", "AceStream", "Buscador de canales en directo y tus favoritos"},
         {"com.amazon.venezia", "Appstore", "Instalar y actualizar apps"},
+        {"com.android.vending", "Google Play", "Instalar y actualizar apps"},
         {"#settings", "Ajustes", "Configuración del Fire TV"},
         {"#more", "Más apps", "El resto de tus aplicaciones"},
         {"#amazon", "Menú Amazon", "Volver al inicio original de Amazon"},
     };
+
+    /**
+     * Inicio original del aparato: el de Amazon en los Fire TV o el de Google en las teles
+     * Android TV / Google TV. null si no hay (o está desactivado).
+     */
+    static String stockPkg(PackageManager pm) {
+        String[] all = new String[Redirector.GOOGLE_HOMES.length + 1];
+        all[0] = Redirector.AMAZON;
+        System.arraycopy(Redirector.GOOGLE_HOMES, 0, all, 1, Redirector.GOOGLE_HOMES.length);
+        for (String p : all) {
+            try {
+                if (pm.getApplicationInfo(p, 0).enabled) return p;
+            } catch (Throwable t) { }
+        }
+        return null;
+    }
+
+    static boolean isAmazon(PackageManager pm) {
+        try { if (pm.hasSystemFeature("amazon.hardware.fire_tv")) return true; } catch (Throwable t) { }
+        return Redirector.AMAZON.equals(stockPkg(pm));
+    }
+
+    /** Herramientas del dock con los textos del aparato (Fire TV o tele Android/Google TV). */
+    static String[] tool(PackageManager pm, String[] a) {
+        if (isAmazon(pm)) return a;
+        if (a[0].equals("#settings")) return new String[]{a[0], a[1], "Configuración de la tele"};
+        if (a[0].equals("#amazon")) return new String[]{a[0], "Menú Google TV", "Volver al inicio original de Google"};
+        return a;
+    }
 
     static volatile boolean resumed = false;
 
@@ -244,9 +274,11 @@ public class MainActivity extends Activity {
         dock.setPadding(px(10), px(10), px(10), px(10));
         dock.setBackground(round(0x991E0E20, px(48), Math.max(1, px(1)), 0x1FFFFFFF));
         int k = 0;
-        for (String[] a : TOOLS) {
+        for (String[] a0 : TOOLS) {
+            String[] a = tool(pm, a0);
             if (!a[0].startsWith("#") && launchIntent(pm, a[0]) == null) continue;
             if (a[0].equals("#ace") && AceLinks.pkg(this) == null) continue;
+            if (a[0].equals("#amazon") && stockPkg(pm) == null) continue;
             View item = dockItem(pm, a);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, px(84));
             if (k++ > 0) lp.leftMargin = px(8);
@@ -370,9 +402,10 @@ public class MainActivity extends Activity {
         View badge;
         Drawable icon = null;
         if (a[0].equals("#settings")) {
-            try { icon = pm.getApplicationIcon("com.amazon.tv.settings.v2"); } catch (Throwable t) { }
+            try { icon = pm.getApplicationIcon("com.amazon.tv.settings.v2"); }
+            catch (Throwable t) { try { icon = pm.getApplicationIcon("com.android.tv.settings"); } catch (Throwable t2) { } }
         } else if (a[0].equals("#amazon")) {
-            try { icon = pm.getApplicationIcon("com.amazon.tv.launcher"); } catch (Throwable t) { }
+            try { icon = pm.getApplicationIcon(stockPkg(pm)); } catch (Throwable t) { }
         } else if (a[0].equals("#ace")) {
             try { icon = pm.getApplicationIcon(AceLinks.pkg(this)); } catch (Throwable t) { }
         } else if (!a[0].startsWith("#")) {
@@ -471,13 +504,20 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Abre el inicio original (Amazon o Google) sin que Inicio vuelva a taparlo. */
     void goAmazon() {
-        Redirector.amazonHome();
+        String p = stockPkg(getPackageManager());
+        Redirector.stockHome();
         try {
-            startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                    .setClassName("com.amazon.tv.launcher", "com.amazon.tv.launcher.ui.HomeActivity_vNext")
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } catch (Throwable t) { toast("No se pudo abrir el menú de Amazon"); }
+            if (Redirector.AMAZON.equals(p)) {
+                startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                        .setClassName("com.amazon.tv.launcher", "com.amazon.tv.launcher.ui.HomeActivity_vNext")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } else {
+                startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                        .setPackage(p).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }
+        } catch (Throwable t) { toast("No se pudo abrir el inicio original"); }
     }
 
     // ---- AceStream: enlaces enviados desde el móvil ----

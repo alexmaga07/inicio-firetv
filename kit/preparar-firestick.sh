@@ -1,5 +1,6 @@
 #!/bin/bash
-# Prepara un Fire Stick nuevo (o deja uno al día) con todo lo de Inicio.
+# Prepara un Fire Stick nuevo, o una tele Android TV / Google TV, con todo lo de Inicio
+# (o deja uno al día). Detecta solo qué aparato es.
 #
 # Uso, desde Ubuntu (WSL), estés en la carpeta que estés:
 #   bash /mnt/c/Users/Alejandro/Downloads/FireTV-Inicio/kit/preparar-firestick.sh 192.168.1.50
@@ -8,10 +9,12 @@
 # Hace, en este orden:
 #   1. Conecta por ADB (la primera vez hay que aceptar el aviso en la tele).
 #   2. Guarda una copia de los ajustes y apps del aparato en kit/registro/ (para poder deshacer).
-#   3. Desactiva las apps de Amazon que no se usan (anuncios, métricas, tutoriales...).
-#   4. Ajustes de fluidez: animaciones 0,5x y suspensión a los 20 min.
+#   3. Fire TV: desactiva las apps de Amazon que no se usan (anuncios, métricas, tutoriales...).
+#      Android/Google TV: no desactiva nada (el inicio de Google se queda, por si hace falta).
+#   4. Ajustes de fluidez: animaciones 0,5x (Fire TV: y suspensión a los 20 min).
 #   5. Instala Inicio, Stremio y AceStream con los APK del kit (no descarga nada).
-#   6. Configura Inicio según la versión de Fire OS (botón Home, permisos, actualizaciones).
+#   6. Configura Inicio (botón Home, permisos, actualizaciones). En Android/Google TV además lo
+#      elige como app de inicio.
 #   7. Apunta el aparato en kit/registro/aparatos.csv (control de versiones por aparato).
 # Las apps de la tienda de Amazon (Proton VPN, Netflix...) se instalan desde la propia tele.
 
@@ -67,7 +70,13 @@ SDK="$(sh_ getprop ro.build.version.sdk)"
 MODELO="$(sh_ getprop ro.product.model)"
 FIREOS="$(sh_ getprop ro.build.version.name)"
 SERIE="$(sh_ getprop ro.serialno)"
-verde "Conectado: $MODELO · $FIREOS · Android API $SDK"
+# ¿Fire TV o tele Android TV / Google TV?
+if sh_ pm list features | grep -q amazon.hardware.fire_tv; then
+  AMAZON_TV=1; SISTEMA="Fire OS $FIREOS"
+else
+  AMAZON_TV=0; SISTEMA="Android $(sh_ getprop ro.build.version.release) ($(sh_ getprop ro.product.manufacturer))"
+fi
+verde "Conectado: $MODELO · $SISTEMA · Android API $SDK"
 
 # ------------------------------------------------------------------ 2. Copia de seguridad
 titulo "Guardando copia de seguridad del aparato"
@@ -82,6 +91,7 @@ sh_ pm list packages -3 --show-versioncode > "$REG/apps-instaladas-antes.txt"
 verde "Copia en kit/registro/$NOMBRE"
 
 # ------------------------------------------------------------------ 3. Limpieza de Amazon
+if [ "$AMAZON_TV" = 1 ]; then
 titulo "Desactivando apps de Amazon que no se usan"
 # Unión de las listas del HD y del 4K. Las que no existen en un modelo se saltan.
 AMAZON="com.amazon.kso.blackbird com.amazon.sneakpeek com.amazon.tv.acr com.amazon.tv.fw.metrics
@@ -99,15 +109,24 @@ done
 sh_ pm trim-caches 999G >/dev/null
 echo "$AMAZON" | tr ' ' '\n' | grep . > "$REG/apps-amazon-desactivadas.txt"
 verde "$N apps de Amazon desactivadas (para volver atrás: pm enable <app>, lista en el registro)"
+else
+  N=0
+  titulo "Tele Android/Google TV: no se desactiva ninguna app"
+fi
 
 # ------------------------------------------------------------------ 4. Ajustes
 titulo "Ajustes de fluidez"
 sh_ settings put global window_animation_scale 0.5
 sh_ settings put global transition_animation_scale 0.5
 sh_ settings put global animator_duration_scale 0.5
-# Sin el salvapantallas de Amazon, Android se suspende al acabar este tiempo: 20 min, no 5
-sh_ settings put system screen_off_timeout 1200000
-verde "Animaciones 0,5x · suspensión a los 20 min"
+if [ "$AMAZON_TV" = 1 ]; then
+  # Sin el salvapantallas de Amazon, Android se suspende al acabar este tiempo: 20 min, no 5
+  sh_ settings put system screen_off_timeout 1200000
+  verde "Animaciones 0,5x · suspensión a los 20 min"
+else
+  # En una tele el apagado automático lo lleva la propia tele: no se toca
+  verde "Animaciones 0,5x"
+fi
 
 # ------------------------------------------------------------------ 5. Apps del kit
 titulo "Instalando apps (sin descargar nada)"
@@ -137,14 +156,33 @@ sh_ settings put global alarm_manager_constants min_futurity=0
 # botón Home, cambiar ajustes del sistema en versiones futuras) sin necesitar ADB nunca más
 sh_ pm grant tv.inicio.launcher android.permission.WRITE_SECURE_SETTINGS
 sh_ dumpsys deviceidle whitelist +tv.inicio.launcher >/dev/null
+GUARD=tv.inicio.launcher/tv.inicio.launcher.GuardService
 if [ "${SDK:-0}" -ge 26 ]; then
-  # Fire OS 7+: botón Home por accesibilidad; permiso para instalar sus propias actualizaciones
-  sh_ settings put secure enabled_accessibility_services tv.inicio.launcher/tv.inicio.launcher.GuardService
+  # Fire OS 7+ y Android/Google TV: botón Home por accesibilidad (se añade a los servicios que ya
+  # hubiera, p. ej. los de la tele); permiso para instalar sus propias actualizaciones
+  ACC="$(sh_ settings get secure enabled_accessibility_services)"
+  case "$ACC" in
+    *"$GUARD"*) ;;
+    ""|null) sh_ settings put secure enabled_accessibility_services "$GUARD" ;;
+    *) sh_ settings put secure enabled_accessibility_services "$ACC:$GUARD" ;;
+  esac
   sh_ settings put secure accessibility_enabled 1
   sh_ appops set tv.inicio.launcher REQUEST_INSTALL_PACKAGES allow
   # AceStream: sin ventanita (PiP) al salir del reproductor
   sh_ appops set org.acestream.node.web PICTURE_IN_PICTURE deny
   verde "Botón Home por accesibilidad · actualizaciones permitidas · AceStream sin PiP"
+  if [ "$AMAZON_TV" = 0 ]; then
+    # Android/Google TV sí deja elegir la app de inicio: Inicio pasa a ser la de verdad. El
+    # vigilante de accesibilidad queda de respaldo por si la tele abre el inicio de Google.
+    # Para volver atrás: cmd package set-home-activity con el inicio de Google (está en el registro).
+    sh_ cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME \
+      | tail -1 > "$REG/inicio-original.txt"
+    if sh_ cmd package set-home-activity tv.inicio.launcher/.MainActivity | grep -qi success; then
+      verde "Inicio elegido como app de inicio (antes: $(cat "$REG/inicio-original.txt"))"
+    else
+      amarillo "La tele no deja elegir la app de inicio por ADB: el botón Home irá por accesibilidad"
+    fi
+  fi
 else
   # Fire OS 6: Amazon bloquea la accesibilidad por ADB; se usa el registro del sistema
   sh_ pm grant tv.inicio.launcher android.permission.READ_LOGS
@@ -160,23 +198,24 @@ V_INICIO="$(version tv.inicio.launcher)"
 {
   echo "Fecha: $(date '+%Y-%m-%d %H:%M')"
   echo "Modelo: $MODELO"
-  echo "Fire OS: $FIREOS (API $SDK)"
+  echo "Sistema: $SISTEMA (API $SDK)"
   echo "Serie: $SERIE"
   echo "IP: $IP"
   echo "Inicio: $V_INICIO"
   echo "Stremio: $(version com.stremio.one)"
   echo "AceStream: $(version org.acestream.node.web)"
-  echo "Apps de Amazon desactivadas: $N"
+  [ "$AMAZON_TV" = 1 ] && echo "Apps de Amazon desactivadas: $N"
 } > "$REG/resumen.txt"
 CSV="$KIT/registro/aparatos.csv"
 [ -f "$CSV" ] || echo "fecha;modelo;fireos;serie;ip;inicio" > "$CSV"
-echo "$(date '+%Y-%m-%d %H:%M');$MODELO;$FIREOS;$SERIE;$IP;$V_INICIO" >> "$CSV"
+echo "$(date '+%Y-%m-%d %H:%M');$MODELO;$SISTEMA;$SERIE;$IP;$V_INICIO" >> "$CSV"
 
 titulo "Falta hacer en la tele (necesita la cuenta de cada persona)"
-echo "   · Proton VPN: Appstore > buscar «Proton VPN» > Obtener. Sirve para Stremio los días de bloqueos."
+if [ "$AMAZON_TV" = 1 ]; then TIENDA="Appstore"; else TIENDA="Google Play"; fi
+echo "   · Proton VPN: $TIENDA > buscar «Proton VPN» > Instalar. Sirve para Stremio los días de bloqueos."
 echo "   · Stremio: iniciar sesión (o crear cuenta) y añadir sus addons si los quiere."
 echo "   · AceStream: la primera vez que se abra, aceptar lo que pida (el motor ya va dentro)."
-echo "   · Netflix, HBO Max, YouTube...: desde la Appstore, si se usan."
+echo "   · Netflix, HBO Max, YouTube...: desde $TIENDA, si se usan."
 
 if [ "$REINICIAR" = 1 ]; then
   titulo "Reiniciando para que se guarde la limpieza"

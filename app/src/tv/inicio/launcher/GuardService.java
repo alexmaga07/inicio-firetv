@@ -8,7 +8,7 @@ import android.content.IntentFilter;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 
-/** Vigilante por accesibilidad (Fire OS 7 y posteriores). */
+/** Vigilante por accesibilidad (Fire OS 7 y posteriores, Android TV y Google TV). */
 public class GuardService extends AccessibilityService {
 
     static volatile GuardService inst;
@@ -27,7 +27,11 @@ public class GuardService extends AccessibilityService {
         if (SystemClock.elapsedRealtime() < 3 * 60 * 1000L) {
             Redirector.h.postDelayed(new Runnable() {
                 public void run() {
-                    if (!MainActivity.resumed && !Redirector.amazonMode) Redirector.launch(GuardService.this, false);
+                    if (MainActivity.resumed || Redirector.stockMode) return;
+                    // En una tele puede arrancar directamente en la TDT o en un HDMI: solo se abre
+                    // Inicio si lo que hay delante es el inicio original (o aún no se sabe qué hay)
+                    String p = Redirector.lastPkg;
+                    if (p == null || Redirector.isStockPkg(p)) Redirector.launch(GuardService.this, false);
                 }
             }, 1500);
         }

@@ -14,8 +14,10 @@ import android.view.View;
 import android.view.WindowManager;
 
 /**
- * Lógica común para volver a Inicio cuando aparece el inicio de Amazon.
- * La usan dos vigilantes: GuardService (accesibilidad, Fire OS 7+) y
+ * Lógica común para volver a Inicio cuando aparece el inicio original del aparato: el de Amazon
+ * en los Fire TV o el de Google en las teles Android TV / Google TV (que pueden abrir el suyo al
+ * pulsar Home aunque Inicio sea la app de inicio elegida).
+ * La usan dos vigilantes: GuardService (accesibilidad, Fire OS 7+ y Android/Google TV) y
  * LogWatchService (registro del sistema, Fire OS 6, donde Amazon bloquea
  * activar servicios de accesibilidad por ADB).
  */
@@ -23,13 +25,17 @@ final class Redirector {
 
     static final String AMAZON = "com.amazon.tv.launcher";
     static final String AMAZON_HOME = "HomeActivity_vNext";
-    static final long AMAZON_MODE_MAX = 30 * 60 * 1000L;
+    /** Inicios de Google (Google TV, Android TV y el antiguo Leanback). */
+    static final String[] GOOGLE_HOMES = {"com.google.android.apps.tv.launcherx",
+            "com.google.android.tvlauncher", "com.google.android.leanbacklauncher"};
+    /** Tiempo que se respeta el inicio original cuando se abre a propósito desde Inicio. */
+    static final long STOCK_MODE_MAX = 30 * 60 * 1000L;
 
     static volatile long pausedUntil = 0;
     /** Última app (y actividad) que se ha visto en primer plano, según los vigilantes. */
     static volatile String lastPkg, lastCls;
-    static volatile boolean amazonMode = false;
-    static volatile long amazonModeSince = 0;
+    static volatile boolean stockMode = false;
+    static volatile long stockModeSince = 0;
     static long lastRedirect = 0;
 
     static final Handler h = new Handler(Looper.getMainLooper());
@@ -55,16 +61,38 @@ final class Redirector {
 
     static void pause(long ms) { pausedUntil = SystemClock.elapsedRealtime() + ms; }
 
-    static void amazonHome() {
-        amazonMode = true;
-        amazonModeSince = SystemClock.elapsedRealtime();
+    /** Se ha abierto a propósito el inicio original (botón «Menú Amazon / Google TV»): no redirigir. */
+    static void stockHome() {
+        stockMode = true;
+        stockModeSince = SystemClock.elapsedRealtime();
+    }
+
+    static boolean isGoogleHome(String pkg) {
+        for (String g : GOOGLE_HOMES) if (g.equals(pkg)) return true;
+        return false;
+    }
+
+    static boolean isStockPkg(String pkg) { return AMAZON.equals(pkg) || isGoogleHome(pkg); }
+
+    /**
+     * ¿Es la pantalla principal del inicio original? En Amazon solo su actividad de inicio (el
+     * mismo paquete tiene los Ajustes). En Google, cualquier ventana de su inicio: los ajustes, la
+     * búsqueda por voz y la elección de entradas son otros paquetes.
+     */
+    static boolean isStockHome(String pkg, String cls) {
+        if (pkg == null) return false;
+        if (AMAZON.equals(pkg)) return cls != null && cls.endsWith(AMAZON_HOME);
+        return isGoogleHome(pkg);
     }
 
     static boolean ignorable(String pkg) {
         return pkg.equals("com.android.systemui") || pkg.equals("android")
                 || pkg.equals("com.amazon.tv.ime") || pkg.equals("com.amazon.tv.settings.v2")
                 || pkg.equals("tv.inicio.launcher") || pkg.startsWith("com.amazon.tv.quicksettings")
-                || pkg.equals("com.amazon.vizzini");
+                || pkg.equals("com.amazon.vizzini")
+                || pkg.equals("com.google.android.inputmethod.latin") || pkg.equals("com.google.android.tv.remote.service")
+                || pkg.equals("com.google.android.katniss") || pkg.equals("com.android.tv.settings")
+                || pkg.startsWith("com.google.android.apps.tv.dreamx");
     }
 
     /** Última actividad mostrada según el registro del sistema (necesita READ_LOGS). */
@@ -89,23 +117,23 @@ final class Redirector {
         }
     }
 
-    /** Se ha abierto o creado una actividad de otra app: salir del modo Amazon. */
+    /** Se ha abierto o creado una actividad de otra app: salir del modo «inicio original». */
     static void onOtherApp(String pkg) {
-        if (pkg != null && !AMAZON.equals(pkg) && amazonMode && !ignorable(pkg)) amazonMode = false;
+        if (pkg != null && !isStockPkg(pkg) && stockMode && !ignorable(pkg)) stockMode = false;
     }
 
     /** Se ha mostrado una ventana/actividad. Llamar desde el hilo principal. */
     static void onShown(Context ctx, String pkg, String cls, boolean overlayAllowed) {
         if (pkg == null) return;
         if (pkg.equals("tv.inicio.launcher") || !ignorable(pkg)) { lastPkg = pkg; lastCls = cls; }
-        if (!AMAZON.equals(pkg)) {
-            if (amazonMode && !ignorable(pkg)) amazonMode = false;
+        if (!isStockPkg(pkg)) {
+            if (stockMode && !ignorable(pkg)) stockMode = false;
             return;
         }
-        if (cls == null || !cls.endsWith(AMAZON_HOME)) return;
+        if (!isStockHome(pkg, cls)) return;
         long now = SystemClock.elapsedRealtime();
-        if (amazonMode && now - amazonModeSince < AMAZON_MODE_MAX) return;
-        amazonMode = false;
+        if (stockMode && now - stockModeSince < STOCK_MODE_MAX) return;
+        stockMode = false;
         if (now < pausedUntil) return;
         if (now - lastRedirect < 800) return;
         lastRedirect = now;
@@ -131,20 +159,19 @@ final class Redirector {
         h.postDelayed(hideLater, 7000);
     }
 
-    /** Al encender la tele: abrir Inicio directamente (no hay bloqueo tras Home). */
     /**
      * Al encenderse la pantalla. Fire OS devuelve sola la app que había antes de dormirse
      * (p. ej. una película pausada en Stremio), así que Inicio solo se abre si lo que queda
-     * delante es el inicio de Amazon (o no se sabe qué hay). Antes se abría siempre y sacaba
+     * delante es el inicio original (o no se sabe qué hay). Antes se abría siempre y sacaba
      * al usuario de Stremio al volver de la suspensión (5 min sin tocar el mando).
      */
     static void screenOn(final Context ctx) {
         h.postDelayed(new Runnable() {
             public void run() {
-                if (MainActivity.resumed || amazonMode) return;
+                if (MainActivity.resumed || stockMode) return;
                 String p = lastPkg, c = lastCls;
-                boolean amazonHome = p == null || (AMAZON.equals(p) && c != null && c.endsWith(AMAZON_HOME));
-                if (!amazonHome) return;
+                boolean stockHome = p == null || isStockHome(p, c);
+                if (!stockHome) return;
                 try {
                     ctx.startActivity(new Intent(ctx, MainActivity.class)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -155,7 +182,7 @@ final class Redirector {
     }
 
     static void launcherShown() {
-        amazonMode = false;
+        stockMode = false;
         h.post(new Runnable() {
             public void run() {
                 h.removeCallbacks(fallback);

@@ -69,7 +69,7 @@ public class BootReceiver extends BroadcastReceiver {
     }
 
     static void checkNow(Context c) {
-        if (MainActivity.resumed || Redirector.amazonMode) return;
+        if (MainActivity.resumed || Redirector.stockMode) return;
         if (!LogWatchService.canRun(c)) return; // Fire OS 7+: lo resuelve el servicio de accesibilidad
         String top = Redirector.lastActivity();
         if (top == null) return;
